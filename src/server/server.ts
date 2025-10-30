@@ -165,15 +165,33 @@ export class Server extends McpServer {
         )
     );
     this.addJsonOutputTool(
-      'get_resource',
-      'get_resource returns manifest of a kubernetes resources that belongs to an application',
+      'get_resources',
+      'get_resources return manifests for resources specified by resourceRefs. If resourceRefs is empty or not provided, fetches all resources managed by the application.',
       {
         applicationName: z.string(),
         applicationNamespace: ApplicationNamespaceSchema,
-        resourceRef: ResourceRefSchema
+        resourceRefs: ResourceRefSchema.array().optional()
       },
-      async ({ applicationName, applicationNamespace, resourceRef }) =>
-        await this.argocdClient.getResource(applicationName, applicationNamespace, resourceRef)
+      async ({ applicationName, applicationNamespace, resourceRefs }) => {
+        let refs = resourceRefs || [];
+        if (refs.length === 0) {
+          const tree = await this.argocdClient.getApplicationResourceTree(applicationName);
+          refs =
+            tree.nodes?.map((node) => ({
+              uid: node.uid!,
+              version: node.version!,
+              group: node.group!,
+              kind: node.kind!,
+              name: node.name!,
+              namespace: node.namespace!
+            })) || [];
+        }
+        return Promise.all(
+          refs.map((ref) =>
+            this.argocdClient.getResource(applicationName, applicationNamespace, ref)
+          )
+        );
+      }
     );
     this.addJsonOutputTool(
       'get_resource_actions',
